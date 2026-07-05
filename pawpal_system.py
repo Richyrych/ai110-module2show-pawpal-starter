@@ -105,6 +105,10 @@ class Recurrence:
             raise ValueError("A Recurrence needs a count or an until date.")
         if self.frequency not in ("daily", "weekly"):
             raise ValueError(f"Unsupported frequency {self.frequency!r}.")
+        if self.interval < 1:
+            raise ValueError(f"interval must be >= 1, got {self.interval}.")
+        if self.count is not None and self.count <= 0:
+            return  # a non-positive count means no occurrences.
 
         anchor = first_start.date()
         tod = first_start.time()

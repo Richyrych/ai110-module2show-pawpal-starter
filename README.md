@@ -64,18 +64,38 @@ Mia (Beagle)
 
 ## 🧪 Testing PawPal+
 
+Run the full test suite from the project root:
+
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
 
-Sample test output:
+The suite lives in [`tests/`](tests/) and has two files:
+
+- **`test_pawpal.py`** — happy-path coverage: activity completion and duration,
+  scheduling and conflict rejection, owner-level conflicts across pets,
+  chronological sorting and filtering, bounded `Recurrence` expansion,
+  `auto_schedule` conflict resolution, and the rolling `Repeat` flow.
+- **`test_pawpal_edge_cases.py`** — boundary conditions: interval edges
+  (touching, 1-minute, full-containment, zero-duration), status semantics
+  (cancelled frees a slot, completed still blocks it), degenerate collections
+  (empty calendar, reverse/multi-day sorting, simultaneous starts), recurrence
+  bounds (`until` inclusive/before-start, `interval`/`count` validation), and
+  rolling-repeat edges (next slot taken, cross-pet guard).
+
+Test output:
 
 ```
-# Paste your pytest output here
+============================= test session starts ==============================
+platform linux -- Python 3.13.14, pytest-9.0.3, pluggy-1.6.0
+rootdir: .../ai110-module2show-pawpal-starter
+plugins: anyio-4.13.0
+collected 50 items
+
+tests/test_pawpal.py .....................                               [ 42%]
+tests/test_pawpal_edge_cases.py .............................            [100%]
+
+============================== 50 passed in 0.03s ==============================
 ```
 
 ## 📐 Smarter Scheduling
