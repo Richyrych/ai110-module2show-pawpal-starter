@@ -55,7 +55,7 @@ Objects:
 
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
-
+I decided to use an int value for the time instead of a string.  It was difficult to parse it out each itme and to make duration anything other than the predefined string values for whole or half hours.  This required most of the methods around scheduling to be rewritten, but it allowed for more robust sorting, filtering, and conflict resolution
 ---
 
 ## 3. AI Collaboration

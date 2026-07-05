@@ -48,10 +48,18 @@ Paste a sample of your app's CLI or Streamlit output here so a reader can see wh
 
 ```
 # e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+Today's Schedule
+========================================
+
+Rex (Labrador)
+  [ ] 07:00  Morning walk (30 min, high priority)
+  [ ] 12:00  Lunch feeding (15 min, high priority)
+  [ ] 18:00  Evening play (45 min, medium priority)
+
+Mia (Beagle)
+  [ ] 08:00  Breakfast (15 min, high priority)
+  [ ] 13:00  Afternoon walk (30 min, medium priority)
+  [ ] 19:00  Bedtime treat (5 min, low priority)
 ```
 
 ## 🧪 Testing PawPal+
@@ -72,14 +80,59 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
+PawPal+ models each activity as a real time interval — every `Activity` has a
+`start: datetime` and derives its `end` from `duration_minutes` (`Activity.end`).
+This interval model is what makes the behaviors below possible. All scheduling
+logic lives in [`pawpal_system.py`](pawpal_system.py).
 
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Sorting | `Owner.activities()` | Returns activities sorted chronologically by `start`. Sorting happens at query time, so tasks added out of order still print in time order. |
+| Filtering | `Owner.activities(pet=, status=, on=)` | One query filters by pet, by `Status` (scheduled/completed/cancelled/missed), and/or by date — then sorts. Backed by `Pet.activities` and the `Status` enum. |
+| Conflict detection | `Calendar.find_conflicts()`, `Calendar.conflicts_for()`, `Activity.overlaps()` | Owner-level overlap detection: a single owner can't be two places at once, so overlaps are checked across *all* pets. |
+| Recurring activities | `Owner.schedule_recurring()` + `Recurrence`; `Owner.complete_activity()` + `Repeat` | Two recurrence styles — a bounded batch series and a rolling repeat that spawns the next instance on completion. |
+
+### Sorting behavior
+
+`Owner.activities()` reads the calendar and returns the list sorted by each
+activity's `start` datetime (`sorted(..., key=lambda a: a.start)`). Because the
+sort happens on every call, activities inserted in any order are always returned
+chronologically — no need to keep the underlying list ordered.
+
+### Filtering behavior
+
+`Owner.activities()` accepts three optional, composable filters:
+
+- `pet=` — only that pet's activities (uses the `Pet.activities` view, filtered from the calendar so it can never drift out of sync).
+- `status=` — filter by a `Status` enum value (`SCHEDULED`, `COMPLETED`, `CANCELLED`, `MISSED`).
+- `on=` — only activities whose `start` falls on a given date.
+
+Passing no filters returns the whole schedule, still sorted by time.
+
+### Conflict detection
+
+Conflicts are **owner-level**: because one owner can only do one thing at a
+time, any two overlapping activities conflict even if they belong to different
+pets.
+
+- `Activity.overlaps(other)` — the primitive half-open interval test (`self.start < other.end and other.start < self.end`); touching edges do **not** conflict.
+- `Calendar.conflicts_for(candidate)` — every existing activity that overlaps a candidate (used to reject a booking before it is added).
+- `Calendar.find_conflicts()` — a **sweep-line** algorithm that returns every overlapping pair in `O(n log n + k)` (sort by start, then walk once tracking still-open intervals), exposed on the owner as `Owner.find_conflicts()`.
+
+**Prevention vs. resolution.** `Owner.schedule_activity()` *rejects* a clashing
+booking by raising `ScheduleConflict` (a `ValueError` subclass) with a clear
+message and without mutating the schedule, so callers can catch it and warn the
+user without crashing. Alternatively, `Owner.auto_schedule()` *works around* a
+conflict — sliding the task to the earliest free slot (`Calendar.find_free_slot()`,
+a greedy gap scan) or, with `resolve_by_priority=True`, bumping lower-priority
+tasks to later slots.
+
+### Recurring activities
+
+Two complementary mechanisms:
+
+- **Bounded batch** — `Owner.schedule_recurring(pet, template, Recurrence(...))` expands a `Recurrence` rule (`daily`/`weekly`, `interval`, `weekdays`, bounded by `count` or `until`) via `Recurrence.occurrences()` into distinct `Activity` objects sharing a `series_id`. Occurrences that clash are skipped, not aborted; returns `(scheduled, skipped)`.
+- **Rolling repeat** — set `Activity.repeat` to `Repeat.DAILY` or `Repeat.WEEKLY`, and `Owner.complete_activity()` auto-creates the next instance when the current one is marked complete: **today + 1 day** for daily, **today + 7 days** for weekly, keeping the same time-of-day. It's idempotent (re-completing won't double-spawn) and skips creation if the target slot is already taken.
 
 ## 📸 Demo Walkthrough
 
