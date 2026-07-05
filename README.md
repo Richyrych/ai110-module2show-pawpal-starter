@@ -154,14 +154,111 @@ Two complementary mechanisms:
 - **Bounded batch** — `Owner.schedule_recurring(pet, template, Recurrence(...))` expands a `Recurrence` rule (`daily`/`weekly`, `interval`, `weekdays`, bounded by `count` or `until`) via `Recurrence.occurrences()` into distinct `Activity` objects sharing a `series_id`. Occurrences that clash are skipped, not aborted; returns `(scheduled, skipped)`.
 - **Rolling repeat** — set `Activity.repeat` to `Repeat.DAILY` or `Repeat.WEEKLY`, and `Owner.complete_activity()` auto-creates the next instance when the current one is marked complete: **today + 1 day** for daily, **today + 7 days** for weekly, keeping the same time-of-day. It's idempotent (re-completing won't double-spawn) and skips creation if the target slot is already taken.
 
+## ✨ Features
+
+- **Owner & pet management** — add an owner and any number of pets (name, breed, sex); each pet is wired to its owner and persists in the Streamlit session.
+- **Interval-based scheduling** — every task has a real `start` datetime and a duration, so the system reasons about actual time ranges rather than fixed slots.
+- **Chronological sorting** — the schedule is always returned in start-time order, regardless of the order tasks were added.
+- **Composable filtering** — narrow the view by pet, by status (scheduled / completed / cancelled / missed), and/or by date in a single query.
+- **Owner-level conflict detection** — overlaps are flagged across *all* pets (one owner can't be two places at once), using an efficient sweep-line pass.
+- **Conflict prevention & resolution** — bookings that clash are rejected with a clear warning, or optionally auto-scheduled into the next free slot, with higher-priority tasks able to bump lower-priority ones.
+- **Recurring tasks** — bounded series (daily/weekly with intervals, selected weekdays, and a `count`/`until` bound) plus rolling repeats that spawn the next instance when a task is completed.
+- **Task lifecycle** — mark tasks complete or cancelled; cancelling frees the slot for rebooking.
+- **Professional Streamlit UI** — summary metrics, an interactive sorted/filtered table with priority and status badges, and distinct conflict warnings.
+- **Tested** — a 50-test `pytest` suite covering happy paths and edge cases (see [Testing PawPal+](#-testing-pawpal)).
+
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+### What a user can do in the app
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+The Streamlit UI ([`app.py`](app.py)) is organized top to bottom as a single page:
+
+1. **Set the owner** — type an owner name; it persists for the whole session.
+2. **Add pets** — enter a name, pick a species/breed and sex, and click **Add pet**. Each pet appears in a table showing its breed, sex, and current activity count. Duplicate names are rejected.
+3. **Schedule a task** — choose the pet, date, and start time; give it a title, duration, priority, and a repeat mode (**One-off**, **Daily**, or **Weekly**). Click **Add task** to book it.
+4. **Let the app resolve conflicts** — tick **Auto-schedule around conflicts** before adding a task, and a clashing task slides to the next free slot instead of being rejected.
+5. **Read the schedule at a glance** — a metrics row shows **Total / Scheduled / Completed / Conflicts**, and the schedule renders as a sorted, interactive table with 🔴/🟡/🟢 priority and ⏳/✅/🚫/⚠️ status badges.
+6. **Filter the view** — narrow the table by pet and/or by status; it stays sorted by start time.
+7. **Complete tasks** — tick the **Done** box on a row to mark it complete. A rolling (daily/weekly) task automatically spawns its next instance and confirms the new date.
+8. **See conflict warnings** — a booking that clashes triggers a dedicated warning, and any overlaps already on the calendar are listed under the schedule (or a green "no conflicts" note when clean).
+9. **Inspect state** — the **🔍 Debug: session_state** panel shows what is persisted in memory, with a button to reset the session.
+
+### Example workflow
+
+1. Launch the app and set the owner to *Jordan*.
+2. Add two pets: **Rex** (dog) and **Mia** (cat).
+3. Schedule *Morning walk* for Rex at **07:00** (30 min, high) and *Breakfast* for Mia at **08:00** (15 min, high).
+4. Try to schedule *Vet call* for Rex at **07:15** — a conflict warning appears and it is **not** added.
+5. Re-add *Vet call* with **Auto-schedule around conflicts** ticked — it slides to **07:30**, the first free slot.
+6. Add *Vitamins* for Rex at **10:00** with repeat = **Daily**, then tick its **Done** box — it completes and the next day's instance is created automatically.
+7. Filter by **Rex** and status **Scheduled** to see just his upcoming tasks, still in time order.
+
+### Key scheduling behaviors
+
+- **Sorting happens at query time** — tasks added out of order are always returned chronologically.
+- **Conflicts are owner-level** — one owner can't be in two places at once, so overlaps count even across different pets.
+- **Touching edges don't conflict** — a task starting exactly when another ends is allowed (half-open intervals).
+- **Prevention or resolution** — a clash is either rejected with a clear message, or auto-scheduled into the next free slot (optionally bumping lower-priority tasks).
+- **Two recurrence styles** — a bounded batch series (`count`/`until`), and a rolling repeat that spawns the next instance on completion (today + 1 day for daily, + 7 for weekly).
+- **Cancelling frees a slot** — a cancelled task no longer blocks its time; a completed one still occupies it.
+
+### Sample CLI output
+
+Running the scripted demo prints the scheduling logic end to end (activities are added **out of order** to prove sorting happens at query time):
+
+```console
+$ python main.py
+PawPal+ Schedule Demo
+========================================
+
+All activities, sorted by time
+------------------------------
+  [ ] 07-05 07:00  Morning walk   Rex  ( 30 min, high priority, scheduled)
+  [ ] 07-05 08:00  Breakfast      Mia  ( 15 min, high priority, scheduled)
+  [ ] 07-05 12:00  Lunch feeding  Rex  ( 15 min, high priority, scheduled)
+  [ ] 07-05 13:00  Afternoon walk Mia  ( 30 min, medium priority, scheduled)
+  [ ] 07-05 18:00  Evening play   Rex  ( 45 min, medium priority, scheduled)
+  [ ] 07-05 19:00  Bedtime treat  Mia  (  5 min, low priority, scheduled)
+
+Filter by status: completed
+---------------------------
+  [✓] 07-05 07:00  Morning walk   Rex  ( 30 min, high priority, completed)
+
+Conflict handling: two activities for overlapping times
+-------------------------------------------------------
+  ✓ Booked 'Vet checkup' at 15:00.
+  ⚠️  Conflict — 'Nail trim' was NOT scheduled.
+      'Nail trim' (15:15-15:35) conflicts with 'Vet checkup' (15:00-15:30).
+  Activities before: 6, after: 7 (only the non-conflicting one was added)
+
+Recurring: 'Medication' daily at 09:00 for 3 days
+------------------------------------------------
+  [ ] 07-05 09:00  Medication     Rex  ( 10 min, high priority, scheduled)
+  [ ] 07-06 09:00  Medication     Rex  ( 10 min, high priority, scheduled)
+  [ ] 07-07 09:00  Medication     Rex  ( 10 min, high priority, scheduled)
+  -> 3 scheduled, 0 skipped (conflicts)
+
+Auto-schedule 'Grooming' (30 min) requested at 07:15 (clashes)
+--------------------------------------------------------------
+  [ ] 07-05 07:30  Grooming       Rex  ( 30 min, medium priority, scheduled)
+  -> slid to the first free slot that fits
+
+Rolling recurrence: complete a task -> next instance auto-created
+------------------------------------------------------------------
+  Scheduled (daily):
+  [ ] 07-05 10:00  Vitamins       Rex  ( 10 min, high priority, scheduled)
+  After completing it, the next instance appears:
+  [ ] 07-06 10:00  Vitamins       Rex  ( 10 min, high priority, scheduled)
+  Weekly task 'Bath' completed -> next instance:
+  [ ] 07-12 16:00  Bath           Mia  ( 20 min, medium priority, scheduled)
+
+Remaining conflicts: 0
+
+Direct schedule over a booked slot is still rejected:
+  ⚠️  Conflict — 'Vet call' was NOT scheduled.
+      'Vet call' (18:15-18:45) conflicts with 'Evening play' (18:00-18:45).
+```
+
+> The output above is trimmed for readability; run `python main.py` to see every section (per-pet filters, date filtering, and priority-based resolution).
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
