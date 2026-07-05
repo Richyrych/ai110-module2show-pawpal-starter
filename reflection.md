@@ -7,6 +7,36 @@
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
+Three Core Actions:
+    1. Add pet
+    2. Schedule activity
+    3. View Calendar
+
+Objects:
+    1. Owner
+        attributes: a. pets_owned
+
+        actions:    a. add pet
+                    b. schedule activity
+                    c. view calendar
+                    d. edit pets, activity schedule             
+
+    2. Pet
+        attributes: a. owned_by
+                    b. activities_scheduled
+                    c. breed
+                    d. sex
+
+        actions:    a. complete_activity
+
+    3. Calendar
+        attributes: a. pet_activity
+                    b. available_timeslots
+
+        actions:    a. add_pet_activity
+                    b. edit_pet_activity
+                    c. remove_pet_activity
+
 **b. Design changes**
 
 - Did your design change during implementation?

@@ -23,7 +23,7 @@ classDiagram
         +str sex
         +complete_activity(activity Activity) void
     }
-https://github.com/Richyrych/ai110-module2show-pawpal-starterhttps://github.com/Richyrych/ai110-module2show-pawpal-starterhttps://github.com/Richyrych/ai110-module2show-pawpal-starterhttps://github.com/Richyrych/ai110-module2show-pawpal-starterhttps://github.com/Richyrych/ai110-module2show-pawpal-starterhttps://github.com/Richyrych/ai110-module2show-pawpal-starterhttps://github.com/Richyrych/ai110-module2show-pawpal-starter
+
     class Activity {
         +str title
         +int duration_minutes
